@@ -36,7 +36,7 @@ defmodule MountainWeb.Router do
 
     scope "/" do
       pipe_through :browser
-      live_dashboard "/dashboard", metrics: MountainWeb.Telemetry
+      live_dashboard "/dashboard", [metrics: MountainWeb.Telemetry, ecto_repos: [Mountain.Repo]]
     end
   end
 end
