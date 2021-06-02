@@ -1,1 +1,1 @@
-# Splendid
+# Splendour
