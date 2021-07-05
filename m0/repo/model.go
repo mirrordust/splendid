@@ -1,46 +1,56 @@
 package repo
 
-type StatusType byte
-
 const (
-	DRAFT     StatusType = 0
-	PUBLISHED StatusType = 0b1
-	PREVIEW   StatusType = 0b10
-	PUBLIC    StatusType = 0b100  // otherwise `SECRET`
-	REPRINT   StatusType = 0b1000 // otherwise `ORIGINAL`
+	PUBLISHED byte = 0b1   // otherwise `DRAFT`
+	PUBLIC    byte = 0b10  // otherwise `SECRET`
+	REPRINT   byte = 0b100 // otherwise `ORIGINAL`
+	PREVIEW   byte = 0b1000
+	NORMAL         = PUBLISHED | PUBLIC
 )
 
-// max number of tags = 64
-type TagType uint64
+var statusCode = map[string]byte{
+	"published": PUBLISHED,
+	"public":    PUBLIC,
+	"reprint":   REPRINT,
+	"preview":   REPRINT,
+	"normal":    NORMAL,
+}
+
+func Status2Code(status string) byte {
+	return statusCode[status]
+}
 
 // entity models
+
 type Post struct {
 	Model
-	Title       string
+	Title       string `gorm:"unique"`
 	Abstract    string
 	Content     string
 	ContentType string
 	TOC         string
-	Status      StatusType
-	Tags        TagType
+	PublishedAt int64
+	Status      byte
+	Tags        uint64
 	View
 }
 
 type Tag struct {
 	Model
-	Name string
-	Code TagType
+	Name string `gorm:"unique"`
+	Code uint64 `gorm:"uniqueIndex"`
 	View
 }
 
 type User struct {
 	Model
-	Name     string
+	Name     string `gorm:"unique"`
 	Password string
-	Email    string
+	Email    string `gorm:"unique"`
 }
 
 // auxiliary models
+
 type Model struct {
 	ID        uint64 `gorm:"primarykey"`
 	CreatedAt int64
@@ -48,5 +58,5 @@ type Model struct {
 }
 
 type View struct {
-	ViewPath string
+	ViewPath string `gorm:"unique"`
 }

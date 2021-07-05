@@ -1,9 +1,6 @@
 package main
 
 import (
-	// "fmt"
-
-	// . "github.com/mirrordust/splendour/m0/repo"
 	"github.com/mirrordust/splendour/m0/web"
 )
 

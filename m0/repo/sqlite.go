@@ -10,6 +10,8 @@ import (
 
 var DB *gorm.DB
 
+// init sqlite
+
 func init() {
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Lmicroseconds)
 	log.Println("init sqlite connection...")
@@ -32,29 +34,58 @@ func init() {
 	// SetConnMaxLifetime 设置了连接可复用的最大时间
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	DB = gormDB
-	DB.AutoMigrate(&Post{}, &Tag{}, &User{})
+	DB = gormDB.Debug()
+	err = DB.AutoMigrate(&Post{}, &Tag{}, &User{})
+	if err != nil {
+		log.Panicln("DB AutoMigrate Fail")
+	}
 }
+
+// create
 
 func Create(model interface{}) error {
 	result := DB.Create(model)
 	return result.Error
 }
 
-func FindOne(model interface{}, conds ...interface{}) error {
-	result := DB.First(model, conds...)
+// retrieve
+
+func FindOne(model interface{}, conditions ...interface{}) error {
+	result := DB.First(model, conditions...)
 	return result.Error
 }
 
-func FindAll(models interface{}, query interface{}, args ...interface{}) error {
-	result := DB.Where(query, args...).Find(models)
+type Condition struct {
+	Query         interface{}
+	Args          []interface{}
+	Orders        []interface{}
+	Offset, Limit int
+}
+
+func FindAll(models interface{}, condition Condition) error {
+	tx := DB.Where(condition.Query, condition.Args...)
+	for _, order := range condition.Orders {
+		tx = tx.Order(order)
+	}
+
+	if condition.Offset != 0 {
+		tx = tx.Offset(condition.Offset)
+	}
+	if condition.Limit != 0 {
+		tx = tx.Limit(condition.Limit)
+	}
+	result := tx.Find(models)
 	return result.Error
 }
+
+// update
 
 func UpdateOne(model interface{}, newValue interface{}) error {
 	result := DB.Model(model).Updates(newValue)
 	return result.Error
 }
+
+// delete
 
 func Delete(model interface{}) error {
 	result := DB.Delete(model)
