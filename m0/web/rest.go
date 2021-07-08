@@ -14,41 +14,62 @@ import (
 
 func Server() *gin.Engine {
 	r := gin.Default()
-	v0 := r.Group("/api/v0")
 
-	v0.GET("/posts", posts)
-	v0.GET("/posts/:id", post)
-	v0.POST("/posts", createPost)
-	v0.PATCH("/posts/:id", updatePost)
-	v0.DELETE("/posts/:id", deletePost)
+	read := r.Group("/api/v0")
+	{
+		read.GET("/posts", posts)
+		read.GET("/posts/:id", post)
 
-	v0.GET("/tags/:id/posts", posts)
+		read.GET("/tags/:id/posts", posts)
 
-	v0.GET("/tags", tags)
-	v0.GET("/tags/:id", tag)
-	v0.POST("/tags", createTag)
-	v0.PATCH("/tags/:id", updateTag)
-	v0.DELETE("/tags/:id", deleteTag)
+		read.GET("/tags", tags)
+		read.GET("/tags/:id", tag)
 
-	v0.GET("/users", users)
-	v0.GET("/users/:id", user)
-	v0.POST("/users", createUser)
-	v0.PATCH("/users/:id", updateUser)
-	v0.DELETE("/users/:id", deleteUser)
+	}
+
+	write := r.Group("/api/v0")
+	write.Use(authorization())
+	{
+		write.POST("/posts", createPost)
+		write.PATCH("/posts/:id", updatePost)
+		write.DELETE("/posts/:id", deletePost)
+
+		write.POST("/tags", createTag)
+		write.PATCH("/tags/:id", updateTag)
+		write.DELETE("/tags/:id", deleteTag)
+
+		write.POST("/users", createUser)
+		write.PATCH("/users/:id", updateUser)
+		write.DELETE("/users/:id", deleteUser)
+	}
+
+	// sensitivity read
+	senRead := r.Group("/api/v0")
+	{
+		senRead.GET("/users", users)
+		senRead.GET("/users/:id", user)
+	}
 
 	return r
 }
 
-// handlers
-// post
+// ********** middlewares **********
 
+func authorization() gin.HandlerFunc {
+	return func(context *gin.Context) {
+	}
+}
+
+// ********** handlers **********
+
+// posts handles both `/post` and `/tags/:id/posts`, distinguish by checking `id`
+// /posts/?status=normal&order=published_at,desc;title,asc&page=1&pageSize=10
 func posts(context *gin.Context) {
 	// basic query and args
 	status := context.DefaultQuery("status", "normal")
 	s := repo.Status2Code(status)
-	query := "status & ? = ?"
-	args := []interface{}{s, s}
-	// posts for a particular tag
+	query, args := "status & ? = ?", []interface{}{s, s}
+	// posts for `/tags/:id/posts`
 	tag := context.Param("id")
 	if tag != "" {
 		tid, err := strconv.Atoi(tag)
@@ -100,7 +121,8 @@ func posts(context *gin.Context) {
 }
 
 func post(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+	context.JSON(http.StatusForbidden, &Response{Code: "123", Msg: "123"})
+	//context.AbortWithStatus()
 }
 
 func createPost(context *gin.Context) {
@@ -240,7 +262,12 @@ func deleteUser(context *gin.Context) {
 	context.AbortWithStatus(http.StatusForbidden)
 }
 
-// util functions
+// ********** utilities **********
+
+type Response struct {
+	Code string
+	Msg  string
+}
 
 func paginate(page, pageSize int) (offset, limit int) {
 	if page <= 0 {
