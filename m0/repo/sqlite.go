@@ -56,7 +56,7 @@ func FindOne(model interface{}, conditions ...interface{}) error {
 }
 
 type Condition struct {
-	Query         interface{}
+	Query         string
 	Args          []interface{}
 	Orders        []interface{}
 	Offset, Limit int

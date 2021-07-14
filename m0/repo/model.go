@@ -1,32 +1,16 @@
 package repo
 
 const (
-	PUBLISHED byte = 0b1   // otherwise `DRAFT`
-	PUBLIC    byte = 0b10  // otherwise `SECRET`
-	REPRINT   byte = 0b100 // otherwise `ORIGINAL`
-	PREVIEW   byte = 0b1000
-	NORMAL         = PUBLISHED | PUBLIC
+	PUBLISHED byte = 0b1 // otherwise `DRAFT`
 )
-
-var statusCode = map[string]byte{
-	"published": PUBLISHED,
-	"public":    PUBLIC,
-	"reprint":   REPRINT,
-	"preview":   REPRINT,
-	"normal":    NORMAL,
-}
-
-func Status2Code(status string) byte {
-	return statusCode[status]
-}
 
 // entity models
 
 type Post struct {
 	Model
-	Title       string `gorm:"unique"`
+	Title       string `gorm:"unique;not null"`
 	Abstract    string
-	Content     string
+	Content     string `gorm:"not null"`
 	ContentType string
 	TOC         string
 	PublishedAt int64
@@ -45,7 +29,7 @@ type Tag struct {
 type User struct {
 	Model
 	Name     string `gorm:"unique"`
-	Password string
+	Password string `gorm:"not null"`
 	Email    string `gorm:"unique"`
 }
 

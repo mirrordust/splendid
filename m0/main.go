@@ -1,11 +1,23 @@
 package main
 
 import (
-	"github.com/mirrordust/splendour/m0/web"
+	"fmt"
+	"github.com/mirrordust/splendour/m0/repo"
 )
 
 func main() {
-	web.Server().Run()
+	//web.Server().Run()
+	var posts []repo.Post
+	err := repo.FindAll(&posts, repo.Condition{
+		Query:  nil,
+		Args:   nil,
+		Orders: nil,
+		Offset: 0,
+		Limit:  0,
+	})
+	fmt.Println("===")
+	fmt.Println(posts)
+	fmt.Println(err)
 }
 
 // func testDB() {

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 func Server() *gin.Engine {
 	r := gin.Default()
+	//r.Use(identification())
 
 	read := r.Group("/api/v0")
 	{
@@ -55,6 +57,10 @@ func Server() *gin.Engine {
 
 // ********** middlewares **********
 
+//func identification() gin.HandlerFunc {
+//
+//}
+
 func authorization() gin.HandlerFunc {
 	return func(context *gin.Context) {
 	}
@@ -64,83 +70,73 @@ func authorization() gin.HandlerFunc {
 
 // posts handles both `/post` and `/tags/:id/posts`, distinguish by checking `id`
 // /posts/?status=normal&order=published_at,desc;title,asc&page=1&pageSize=10
-func posts(context *gin.Context) {
-	// basic query and args
-	status := context.DefaultQuery("status", "normal")
-	s := repo.Status2Code(status)
-	query, args := "status & ? = ?", []interface{}{s, s}
-	// posts for `/tags/:id/posts`
-	tag := context.Param("id")
-	if tag != "" {
-		tid, err := strconv.Atoi(tag)
-		if err != nil {
-			log.Println("Atoi tag id error")
-		} else {
-			query = query + " AND tags & ? = ?"
-			args = append(args, tid, tid)
-		}
-	}
-
-	// order
-	orders := context.DefaultQuery("order", "published_at,desc")
-	var ods []interface{}
-	for _, o := range strings.Split(orders, ";") {
-		ods = append(ods, strings.ReplaceAll(o, ",", " "))
-	}
-
-	// page
-	page := context.DefaultQuery("page", "1")
-	pageSize := context.DefaultQuery("pageSize", "10")
-	pg, err := strconv.Atoi(page)
+func posts(c *gin.Context) {
+	scope := c.Query("scope")
+	c1, err := scopeCondition(scope)
 	if err != nil {
-		log.Println("Atoi page error")
-		pg = 1
+		c.JSON(http.StatusBadRequest, ParamError)
+		return
 	}
-	pgs, err := strconv.Atoi(pageSize)
-	if err != nil {
-		log.Println("Atoi pageSize error")
-		pgs = 10
-	}
-	offset, limit := paginate(pg, pgs)
 
-	// query condition
-	cond := repo.Condition{
-		Query:  query,
-		Args:   args,
-		Orders: ods,
-		Offset: offset,
-		Limit:  limit,
+	tag := c.Param("id")
+	c2, err := tagCondition(tag)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ParamError)
+		return
 	}
+
+	orders := c.DefaultQuery("order", "published_at,desc")
+	c3, err := orderCondition(orders)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ParamError)
+		return
+	}
+
+	page := c.DefaultQuery("page", "1")
+	pageSize := c.DefaultQuery("pageSize", "10")
+	c4, err := paginationCondition(page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ParamError)
+		return
+	}
+
+	cond := mergeCondition(c1, c2, c3, c4)
 	var posts []repo.Post
 	err = repo.FindAll(&posts, cond)
 	if err != nil {
-		log.Panicln("DB error")
+		log.Printf("DB error: %v\n", err)
 	}
 
-	context.JSON(200, posts)
+	c.JSON(200, posts)
 }
 
-func post(context *gin.Context) {
-	context.JSON(http.StatusForbidden, &Response{Code: "123", Msg: "123"})
-	//context.AbortWithStatus()
+func post(c *gin.Context) {
+	id := c.Param("id")
+
+	c2, err := tagCondition(tag)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ParamError)
+		return
+	}
+	c.JSON(http.StatusForbidden, &Response{Code: "123", Msg: "123"})
 }
 
-func createPost(context *gin.Context) {
-	title := context.PostForm("title")
-	abstract := context.PostForm("abstract")
-	content := context.PostForm("content")
-	contentType := context.PostForm("contentType")
-	toc := context.PostForm("toc")
-	publishedAt := context.PostForm("publishedAt")
-	status := context.PostForm("status")
-	tags := context.PostForm("tags")
-	viewPath := context.PostForm("viewPath")
+func createPost(c *gin.Context) {
+	title := c.PostForm("title")
+	abstract := c.PostForm("abstract")
+	content := c.PostForm("content")
+	contentType := c.PostForm("contentType")
+	toc := c.PostForm("toc")
+	publishedAt := c.PostForm("publishedAt")
+	status := c.PostForm("status")
+	tags := c.PostForm("tags")
+	viewPath := c.PostForm("viewPath")
 	if title == "" || content == "" {
-		context.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"code": "001",
 			"msg":  "title and content can't be empty",
 		})
-		context.Abort()
+		c.Abort()
 	}
 	if viewPath == "" {
 		viewPath = uuid.NewV4().String()
@@ -168,7 +164,7 @@ func createPost(context *gin.Context) {
 		}
 		p.Status = uint8(s)
 	} else {
-		p.Status = repo.NORMAL
+		p.Status = repo.PUBLISHED
 	}
 
 	if tags != "" {
@@ -184,29 +180,29 @@ func createPost(context *gin.Context) {
 	err := repo.Create(&p)
 	if err != nil {
 		log.Println(err.Error())
-		context.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"code": 002,
 			"msg":  "DB error",
 		})
-		context.Abort()
+		c.Abort()
 	}
-	context.JSON(http.StatusCreated, gin.H{
+	c.JSON(http.StatusCreated, gin.H{
 		"code": 000,
 		"msg":  "created",
 	})
 }
 
-func updatePost(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func updatePost(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func deletePost(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func deletePost(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
 // tag
 
-func tags(context *gin.Context) {
+func tags(c *gin.Context) {
 	cond := repo.Condition{
 		Query:  "1=1",
 		Orders: []interface{}{"name asc"},
@@ -218,48 +214,48 @@ func tags(context *gin.Context) {
 		log.Panicln("DB error")
 	}
 
-	context.JSON(200, tags)
+	c.JSON(200, tags)
 }
 
-func tag(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func tag(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func createTag(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func createTag(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func updateTag(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func updateTag(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func deleteTag(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func deleteTag(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
 // user
 
-func users(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func users(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func user(context *gin.Context) {
+func user(c *gin.Context) {
 	//cond := repo.Condition{
 	//	Query: "",
 	//}
-	context.AbortWithStatus(http.StatusForbidden)
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func createUser(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func createUser(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func updateUser(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func updateUser(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
-func deleteUser(context *gin.Context) {
-	context.AbortWithStatus(http.StatusForbidden)
+func deleteUser(c *gin.Context) {
+	c.AbortWithStatus(http.StatusForbidden)
 }
 
 // ********** utilities **********
@@ -267,6 +263,121 @@ func deleteUser(context *gin.Context) {
 type Response struct {
 	Code string
 	Msg  string
+}
+
+var ParamError = Response{
+	Code: "PE",
+	Msg:  "Param Error",
+}
+
+func mergeCondition(conds ...repo.Condition) repo.Condition {
+	var query = ""
+	var args, orders []interface{}
+	var offset, limit int
+	for _, c := range conds {
+		if c.Query != "" {
+			if query == "" {
+				query = c.Query
+			} else {
+				query = query + " AND " + c.Query
+			}
+		}
+
+		args = append(args, c.Args...)
+
+		orders = append(orders, c.Orders...)
+
+		if c.Offset != 0 {
+			offset = c.Offset
+		}
+		if c.Limit != 0 {
+			limit = c.Limit
+		}
+	}
+	return repo.Condition{
+		Query:  query,
+		Args:   args,
+		Orders: orders,
+		Offset: offset,
+		Limit:  limit,
+	}
+}
+
+func scopeCondition(scope string) (c repo.Condition, e error) {
+	switch strings.ToLower(scope) {
+	case "":
+		fallthrough
+	case "normal":
+		c = repo.Condition{
+			Query: "status & ? = ?",
+			Args:  []interface{}{repo.PUBLISHED, repo.PUBLISHED},
+		}
+		e = nil
+	case "all":
+		c = repo.Condition{}
+		e = nil
+	default:
+		c = repo.Condition{}
+		e = errors.New("param error")
+	}
+	return
+}
+
+func tagCondition(tag string) (c repo.Condition, e error) {
+	if tag == "" {
+		c = repo.Condition{}
+		e = nil
+		return
+	}
+
+	tid, err := strconv.Atoi(tag)
+	if err != nil {
+		c = repo.Condition{}
+		e = errors.New("tag id not number")
+		return
+	}
+
+	c = repo.Condition{
+		Query: "tags & ? = ?",
+		Args:  []interface{}{tid, tid},
+	}
+	return
+}
+
+func orderCondition(orders string) (c repo.Condition, e error) {
+	var ods []interface{}
+	for _, o := range strings.Split(orders, ";") {
+		ods = append(ods, strings.ReplaceAll(o, ",", " "))
+	}
+	c = repo.Condition{
+		Orders: ods,
+	}
+	e = nil
+	return
+}
+
+func paginationCondition(page, pageSize string) (c repo.Condition, e error) {
+	p, err := strconv.Atoi(page)
+	if err != nil {
+		c = repo.Condition{}
+		e = errors.New("page is not number")
+		return
+	}
+
+	ps, err := strconv.Atoi(pageSize)
+	if err != nil {
+		c = repo.Condition{}
+		e = errors.New("pageSize is not number")
+		return
+	}
+
+	offset, limit := paginate(p, ps)
+	c = repo.Condition{
+		Offset: offset,
+		Limit:  limit,
+	}
+	e = nil
+	return
 }
 
 func paginate(page, pageSize int) (offset, limit int) {
